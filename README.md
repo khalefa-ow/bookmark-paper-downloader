@@ -8,7 +8,7 @@ A local Chrome extension that scans every bookmark folder, identifies papers, PD
 2. Turn on **Developer mode**.
 3. Click **Load unpacked**.
 4. Select this `bookmark-paper-downloader` folder.
-5. Open the extension, choose **All groups** or one bookmark group, optionally enable **Include open tabs** and choose a tab group, then click **Scan selected group**.
+5. Open the extension and choose any combination of **Bookmarks**, **Tab groups**, and ungrouped **Open tabs**, then click **Scan selected pages**.
 
 Chrome saves files under `Downloads/Bookmark Papers`. The extension asks for confirmation before deleting duplicate bookmarks and always keeps the first copy encountered.
 
@@ -16,8 +16,8 @@ Chrome saves files under `Downloads/Bookmark Papers`. The extension asks for con
 
 Automatic PDF downloads work for direct `.pdf` bookmarks plus arXiv, OpenReview, bioRxiv, medRxiv, ACL Anthology, and PMLR links. DOI and major publisher pages are identified as papers, but are not auto-downloaded because they may require login, payment, or license acceptance.
 
-Open tabs can optionally be included in a scan, filtered to a named tab group or ungrouped tabs, and are labeled by tab group and browser window; they are never affected by duplicate-bookmark removal.
+**Tab groups** queries every currently open named group and its tabs directly from Chrome. **Open tabs** queries current ungrouped tabs. Closed groups are not stored or scanned.
 
-Technical-page detection covers common documentation, API/reference/guide/tutorial URLs, GitHub repositories, Stack Exchange technical questions, and established technical publishing sites. These pages are listed separately and are never sent to the PDF downloader.
+Technical-page detection covers database systems and SQL, programming documentation, APIs, package registries, code repositories, technical Q&A, web standards, platform documentation, university course material, computer-science research indexes, and strong computer-science terms in page titles and URLs. After every scan, **All scanned links** lists each URL as Paper, Technical, Other, or Filtered and explains the decision. Other means a valid web page that matched no specialized rule; Filtered is reserved for invalid URLs and unsupported schemes. The JSON export includes the same decisions.
 
 Duplicate matching normalizes host casing, trailing slashes, URL fragments, and common tracking parameters. The extension does not upload bookmark data anywhere.

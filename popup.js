@@ -6,25 +6,57 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
 
+function formatAddedDate(item) {
+  const timestamp = item.dateAdded || item.addedToScanAt;
+  if (!timestamp) return 'Date unavailable';
+  return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(timestamp));
+}
+
+function resultItem(item, pdfReady = false) {
+  const sourceLabel = item.source === 'tab' ? (item.tabGroupId === -1 ? 'Open tab' : 'Grouped tab') : 'Bookmark';
+  const dateLabel = item.dateAdded ? 'Added' : 'Added to scan';
+  return `<li><span class="tag">${escapeHtml(item.info?.kind || item.classification)}</span><span class="tag">${sourceLabel}</span>${pdfReady ? '<span class="tag">PDF ready</span>' : ''}<a href="${escapeHtml(item.url)}" target="_blank" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</a><small><b>Listed in:</b> ${escapeHtml(item.folder)}</small><small><b>${dateLabel}:</b> ${escapeHtml(formatAddedDate(item))}</small></li>`;
+}
+
+function reportItem(item) {
+  const kind = item.info?.kind || 'No match';
+  return `<li><span class="tag">${escapeHtml(item.classification)}</span><span class="tag">${escapeHtml(kind)}</span><a href="${escapeHtml(item.url)}" target="_blank" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</a><small><b>Decision:</b> ${escapeHtml(item.reason)}</small><small><b>Source:</b> ${escapeHtml(item.folder)}</small></li>`;
+}
+
+function renderResultSection(detailsId, badgeId, listId, items, renderer, emptyText) {
+  $(badgeId).textContent = items.length;
+  $(listId).innerHTML = items.map(renderer).join('') || `<li>${emptyText}</li>`;
+  if (detailsId) $(detailsId).hidden = items.length === 0;
+}
+
+function syncSourceControls(busy = false) {
+  $('group').disabled = busy || !$('includeBookmarks').checked;
+  $('tabGroup').disabled = busy || !$('includeTabGroups').checked;
+}
+
 function render(state = {}) {
   currentState = state;
-  $('status').textContent = state.message || 'Ready to scan your bookmarks.';
+  $('status').textContent = state.message || 'Ready to scan your pages.';
   const busy = state.status === 'scanning' || state.status === 'downloading';
   $('scan').disabled = busy;
-  $('group').disabled = busy;
-  $('includeTabs').disabled = busy;
-  $('tabGroup').disabled = busy || !$('includeTabs').checked;
-  $('scan').textContent = state.status === 'scanning' ? 'Scanning…' : 'Scan selected group';
+  $('includeBookmarks').disabled = busy;
+  $('includeTabGroups').disabled = busy;
+  $('includeOpenTabs').disabled = busy;
+  $('scan').textContent = state.status === 'scanning' ? 'Scanning…' : 'Scan selected pages';
   if (state.folderId !== undefined) $('group').value = state.folderId || '';
-  if (state.includeOpenTabs !== undefined) $('includeTabs').checked = state.includeOpenTabs;
+  if (state.includeBookmarks !== undefined) $('includeBookmarks').checked = state.includeBookmarks;
+  if (state.includeTabGroups !== undefined) $('includeTabGroups').checked = state.includeTabGroups;
+  if (state.includeOpenTabs !== undefined) $('includeOpenTabs').checked = state.includeOpenTabs;
   if (state.tabGroupId !== undefined) $('tabGroup').value = state.tabGroupId === null ? '' : String(state.tabGroupId);
-  $('tabGroup').disabled = busy || !$('includeTabs').checked;
+  syncSourceControls(busy);
   if (!state.papers) return;
   $('summary').hidden = false;
   const downloads = new Set(state.papers.filter(p => p.info.pdfUrl).map(p => p.info.pdfUrl)).size;
   const technicalPages = state.technicalPages || [];
+  const otherPages = state.otherPages || [];
   const duplicateCount = (state.duplicateGroups || []).reduce((sum, group) => sum + group.remove.length, 0);
   $('paperCount').textContent = state.papers.length;
+  $('otherCount').textContent = otherPages.length;
   $('technicalCount').textContent = technicalPages.length;
   $('pdfCount').textContent = downloads;
   $('duplicateCount').textContent = duplicateCount;
@@ -34,11 +66,16 @@ function render(state = {}) {
   $('download').textContent = state.status === 'downloading' ? 'Downloading…' : `Download ${downloads} PDF${downloads === 1 ? '' : 's'}`;
   $('remove').disabled = busy || duplicateCount === 0;
   $('remove').textContent = `Remove ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}`;
-  $('papers').innerHTML = state.papers.map(p => `<li><span class="tag">${escapeHtml(p.info.kind)}</span>${p.source === 'tab' ? '<span class="tag">Open tab</span>' : ''}${p.info.pdfUrl ? '<span class="tag">PDF ready</span>' : ''}<a href="${escapeHtml(p.url)}" target="_blank" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a><small><b>Listed in:</b> ${escapeHtml(p.folder)}</small></li>`).join('') || '<li>No papers detected.</li>';
-  $('technicalBadge').textContent = technicalPages.length;
-  $('technicalPages').innerHTML = technicalPages.map(p => `<li><span class=\"tag\">${escapeHtml(p.info.kind)}</span>${p.source === 'tab' ? '<span class="tag">Open tab</span>' : ''}<a href=\"${escapeHtml(p.url)}\" target=\"_blank\" title=\"${escapeHtml(p.title)}\">${escapeHtml(p.title)}</a><small><b>Listed in:</b> ${escapeHtml(p.folder)}</small></li>`).join('') || '<li>No technical pages detected.</li>';
-  $('technicalDetails').hidden = technicalPages.length === 0;
-  $('duplicates').innerHTML = (state.duplicateGroups || []).map(g => `<li><b>${escapeHtml(g.keep.title)}</b><small>Keep: ${escapeHtml(g.keep.folder)}</small><small>Remove ${g.remove.length}: ${escapeHtml(g.remove.map(x => x.folder).join(', '))}</small></li>`).join('') || '<li>No duplicate bookmarks.</li>';
+  const exportCount = (state.linkReport || [...(state.papers || []), ...(state.technicalPages || [])]).length;
+  $('exportJson').disabled = busy || exportCount === 0;
+  $('exportJson').textContent = 'Export classification JSON';
+  renderResultSection(null, 'detectedBadge', 'papers', state.papers, item => resultItem(item, Boolean(item.info.pdfUrl)), 'No papers detected.');
+  renderResultSection('technicalDetails', 'technicalBadge', 'technicalPages', technicalPages, resultItem, 'No technical pages detected.');
+  renderResultSection('otherDetails', 'otherBadge', 'otherPages', otherPages, resultItem, 'No other pages.');
+  renderResultSection(null, 'reportBadge', 'linkReport', state.linkReport || [], reportItem, 'No links were scanned.');
+
+  const duplicateGroups = state.duplicateGroups || [];
+  $('duplicates').innerHTML = duplicateGroups.map(group => `<li><b>${escapeHtml(group.keep.title)}</b><small>Keep: ${escapeHtml(group.keep.folder)}</small><small>Remove ${group.remove.length}: ${escapeHtml(group.remove.map(item => item.folder).join(', '))}</small></li>`).join('') || '<li>No duplicate bookmarks.</li>';
   $('duplicateDetails').hidden = duplicateCount === 0;
   const errors = state.failed || [];
   $('errors').hidden = errors.length === 0;
@@ -75,22 +112,36 @@ async function loadGroups() {
 }
 
 async function loadTabGroups() {
-  const groups = await chrome.tabGroups.query({});
-  groups.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-  $('tabGroup').insertAdjacentHTML('beforeend', groups.map(group => `<option value=\"${group.id}\">${escapeHtml(group.title || 'Unnamed tab group')} (Window ${group.windowId})</option>`).join(''));
-  if (currentState?.tabGroupId !== undefined && currentState.tabGroupId !== null) $('tabGroup').value = String(currentState.tabGroupId);
+  const response = await chrome.runtime.sendMessage({action: 'getTabGroups'});
+  if (!response?.ok) throw new Error(response?.error || 'Could not load tab groups.');
+
+  const groups = response.result || [];
+  $('tabGroup').insertAdjacentHTML('beforeend', groups.map(group =>
+    `<option value="${group.id}">${escapeHtml(group.title || 'Unnamed tab group')} (Window ${group.windowId}, ${group.tabCount} tabs)</option>`
+  ).join(''));
+
+  if (currentState?.tabGroupId !== undefined && currentState.tabGroupId !== null) {
+    $('tabGroup').value = String(currentState.tabGroupId);
+  }
 }
 
-$('includeTabs').addEventListener('change', () => {
-  $('tabGroup').disabled = !$('includeTabs').checked;
-});
+$('includeBookmarks').addEventListener('change', () => syncSourceControls());
+$('includeTabGroups').addEventListener('change', () => syncSourceControls());
 
 $('scan').addEventListener('click', () => {
+  const includeBookmarks = $('includeBookmarks').checked;
+  const includeTabGroups = $('includeTabGroups').checked;
+  const includeOpenTabs = $('includeOpenTabs').checked;
+  if (!includeBookmarks && !includeTabGroups && !includeOpenTabs) {
+    render({...currentState, status: 'ready', message: 'Choose at least one page source to scan.'});
+    return;
+  }
   const option = $('group').selectedOptions[0];
   const tabGroupValue = $('tabGroup').value;
-  action('scan', {folderId: option.value || null, folderName: option.textContent, includeOpenTabs: $('includeTabs').checked, tabGroupId: tabGroupValue === '' ? null : Number(tabGroupValue)});
+  action('scan', {folderId: option.value || null, folderName: option.textContent, includeBookmarks, includeTabGroups, includeOpenTabs, tabGroupId: tabGroupValue === '' ? null : Number(tabGroupValue)});
 });
 $('download').addEventListener('click', () => action('downloadPdfs'));
+$('exportJson').addEventListener('click', () => action('exportUniqueUrls'));
 $('remove').addEventListener('click', () => {
   const count = (currentState?.duplicateGroups || []).reduce((sum, group) => sum + group.remove.length, 0);
   if (count && confirm(`Remove ${count} duplicate bookmark${count === 1 ? '' : 's'}? The first copy of each URL will be kept.`)) action('removeDuplicates');

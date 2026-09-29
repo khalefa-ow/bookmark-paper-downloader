@@ -47,23 +47,72 @@ function paperInfo(raw) {
   if (/^(dl\.)?acm\.org$/.test(host) && path.startsWith('/doi/')) return {kind: 'ACM paper', pdfUrl: null, confidence: 'paper'};
   if (/^(ieeexplore\.ieee\.org|link\.springer\.com|nature\.com|science\.org|sciencedirect\.com)$/.test(host)) return {kind: 'Publisher paper', pdfUrl: null, confidence: 'paper'};
   if (host === 'doi.org') return {kind: 'DOI paper', pdfUrl: null, confidence: 'paper'};
-  if (/\b(paper|article|publication|proceedings|preprint)\b/i.test(path)) return {kind: 'Likely paper', pdfUrl: null, confidence: 'heuristic'};
+  if (/\b(paper|publication|proceedings|preprint)\b/i.test(path)) return {kind: 'Likely paper', pdfUrl: null, confidence: 'heuristic'};
   return null;
 }
 
-function technicalPageInfo(raw) {
+function technicalPageInfo(raw, title = '') {
   let url;
   try { url = new URL(raw); } catch { return null; }
   if (!/^https?:$/.test(url.protocol)) return null;
   const host = url.hostname.toLowerCase().replace(/^www\./, '');
   const path = decodeURIComponent(url.pathname).toLowerCase();
+  const text = `${title} ${host} ${path}`.toLowerCase();
+
+  const databaseHost = /(^|\.)(postgresql\.org|mysql\.com|mariadb\.com|sqlite\.org|mongodb\.com|redis\.io|duckdb\.org|clickhouse\.com|cassandra\.apache\.org|couchdb\.apache\.org|neo4j\.com|influxdata\.com|elastic\.co|opensearch\.org|cockroachlabs\.com|planetscale\.com|supabase\.com|firebase\.google\.com|snowflake\.com|databricks\.com|dynamodb\.amazon\.com)$/.test(host);
+  if (databaseHost || /\b(database|databases|dbms|sql|nosql|postgres(?:ql)?|mysql|mariadb|sqlite|mongodb|redis|duckdb|clickhouse|cassandra|couchdb|neo4j|dynamodb|data warehouse|query optimizer|transaction isolation)\b/.test(text)) return {kind: 'Database'};
 
   if (/^(developer\.mozilla\.org|docs\.python\.org|docs\.github\.com|learn\.microsoft\.com|developer\.apple\.com|developer\.android\.com)$/.test(host)) return {kind: 'Documentation'};
-  if (/^(stackoverflow\.com|serverfault\.com|superuser\.com)$/.test(host) && /^\/questions\//.test(path)) return {kind: 'Q&A'};
-  if (host === 'github.com' && /^\/[^/]+\/[^/]+/.test(path)) return {kind: 'Repository'};
-  if (/^(dev\.to|medium\.com|hackernoon\.com|css-tricks\.com|smashingmagazine\.com)$/.test(host)) return {kind: 'Technical article'};
-  if (/\/(docs?|documentation|reference|api|sdk|guides?|tutorials?|manual)(?:\/|$)/.test(path)) return {kind: 'Documentation'};
+  if (/^(stackoverflow\.com|serverfault\.com|superuser\.com|stackexchange\.com)$/.test(host) && /^\/questions\//.test(path)) return {kind: 'Q&A'};
+  if (/^(github\.com|gitlab\.com|codeberg\.org|bitbucket\.org)$/.test(host) && /^\/[^/]+\/[^/]+/.test(path)) return {kind: 'Repository'};
+  if (/^(npmjs\.com|pypi\.org|crates\.io|pkg\.go\.dev|rubygems\.org|packagist\.org|nuget\.org|mvnrepository\.com)$/.test(host)) return {kind: 'Package'};
+  if (/^(rfc-editor\.org|ietf\.org|w3\.org|tc39\.es|whatwg\.org|kubernetes\.io|docker\.com)$/.test(host)) return {kind: 'Standard / platform'};
+  if (/^(dblp\.org|semanticscholar\.org|paperswithcode\.com|scholar\.google\.com|researchgate\.net)$/.test(host)) return {kind: 'Computer science research'};
+  if (/\.edu$/.test(host) && /\/(courses?|classes?|teaching|lectures?|research|publications?|~[^/]+\/)/.test(path)) return {kind: 'Computer science education'};
+  if (/^(dev\.to|medium\.com|hackernoon\.com|css-tricks\.com|smashingmagazine\.com|martinfowler\.com|infoq\.com|dzone\.com)$/.test(host)) return {kind: 'Technical article'};
+  if (/^(docs?|developer|developers|learn|help|reference)\./.test(host) || /\/(docs?|documentation|reference|api|sdk|guides?|tutorials?|manual|cookbook|examples?)(?:\/|$)/.test(path)) return {kind: 'Documentation'};
+  if (/\b(algorithms?|data structures?|distributed systems?|operating systems?|compilers?|programming language|software engineering|computer science|machine learning|deep learning|neural network|computer vision|natural language processing|cybersecurity|cryptography|web development|cloud computing|kubernetes|docker|linux kernel|source code)\b/.test(text)) return {kind: 'Computer science'};
   return null;
+}
+
+async function getTabGroups() {
+  const groups = await chrome.tabGroups.query({});
+  const withCounts = await Promise.all(groups.map(async group => ({
+    ...group,
+    tabCount: (await chrome.tabs.query({groupId: group.id})).length
+  })));
+  return withCounts.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+}
+function paperReason(info) {
+  const reasons = {
+    direct: 'Direct PDF URL',
+    'known-host': 'Recognized paper host',
+    paper: 'Recognized publisher or DOI',
+    heuristic: 'Paper terms in URL'
+  };
+  return reasons[info.confidence] || 'Matched paper rule';
+}
+
+function classifyItem(item) {
+  const paper = paperInfo(item.url);
+  if (paper) {
+    return {...item, classification: 'Paper', reason: paperReason(paper), info: paper};
+  }
+
+  const technical = technicalPageInfo(item.url, item.title);
+  if (technical) {
+    return {...item, classification: 'Technical', reason: `Matched ${technical.kind} rule`, info: technical};
+  }
+
+  try {
+    if (!/^https?:$/.test(new URL(item.url).protocol)) {
+      return {...item, classification: 'Filtered', reason: 'Unsupported URL scheme', info: null};
+    }
+  } catch {
+    return {...item, classification: 'Filtered', reason: 'Invalid URL', info: null};
+  }
+
+  return {...item, classification: 'Other', reason: 'Valid web link; no paper or technical rule matched', info: null};
 }
 
 function safeFilename(item) {
@@ -78,31 +127,98 @@ async function save(patch) {
   return next;
 }
 
-async function scan({folderId = null, folderName = 'All groups', includeOpenTabs = false, tabGroupId = null} = {}) {
-  await save({status: 'scanning', message: folderId ? `Scanning ${folderName}\u2026` : 'Scanning every bookmark group\u2026', folderId, includeOpenTabs, tabGroupId});
-  const tree = await chrome.bookmarks.getTree();
-  const bookmarks = [];
-  let selectedGroupFound = !folderId;
-  const walk = (nodes, folders = [], inSelectedGroup = !folderId) => {
-    for (const node of nodes) {
-      const selected = inSelectedGroup || node.id === folderId;
-      if (node.id === folderId) selectedGroupFound = true;
-      if (node.url && selected) bookmarks.push({id: node.id, title: node.title || 'Untitled', url: node.url, folder: folders.join(' / ') || 'Bookmarks'});
-      if (node.children) walk(node.children, node.id === '0' ? folders : [...folders, node.title || 'Unnamed folder'], selected);
-    }
-  };
-  walk(tree);
-  if (!selectedGroupFound) throw new Error('The selected bookmark group no longer exists.');
-  const bookmarkItems = [...bookmarks];
-  if (includeOpenTabs) {
-    const [tabs, tabGroups] = await Promise.all([chrome.tabs.query({}), chrome.tabGroups.query({})]);
-    const groupsById = new Map(tabGroups.map(group => [group.id, group]));
-    if (tabGroupId !== null && tabGroupId !== -1 && !groupsById.has(tabGroupId)) throw new Error('The selected tab group no longer exists.');
+async function scan({folderId = null, folderName = 'All groups', includeBookmarks = true, includeTabGroups = false, includeOpenTabs = false, tabGroupId = null} = {}) {
+  if (!includeBookmarks && !includeTabGroups && !includeOpenTabs) {
+    throw new Error('Choose at least one page source to scan.');
+  }
+
+  const scanStartedAt = Date.now();
+  await save({
+    status: 'scanning',
+    message: 'Scanning selected pages…',
+    folderId,
+    includeBookmarks,
+    includeTabGroups,
+    includeOpenTabs,
+    tabGroupId
+  });
+
+  const items = [];
+  const bookmarkItems = [];
+
+  if (includeBookmarks) {
+    const tree = await chrome.bookmarks.getTree();
+    let selectedGroupFound = !folderId;
+
+    const walk = (nodes, folders = [], inSelectedGroup = !folderId) => {
+      for (const node of nodes) {
+        const selected = inSelectedGroup || node.id === folderId;
+        if (node.id === folderId) selectedGroupFound = true;
+
+        if (node.url && selected) {
+          const bookmark = {
+            id: node.id,
+            title: node.title || 'Untitled',
+            url: node.url,
+            folder: folders.join(' / ') || 'Bookmarks',
+            source: 'bookmark',
+            dateAdded: node.dateAdded
+          };
+          items.push(bookmark);
+          bookmarkItems.push(bookmark);
+        }
+
+        if (node.children) {
+          const nextFolders = node.id === '0' ? folders : [...folders, node.title || 'Unnamed folder'];
+          walk(node.children, nextFolders, selected);
+        }
+      }
+    };
+
+    walk(tree);
+    if (!selectedGroupFound) throw new Error('The selected bookmark group no longer exists.');
+  }
+
+  if (includeTabGroups) {
+    const [tabs, groups] = await Promise.all([
+      chrome.tabs.query({}),
+      chrome.tabGroups.query({})
+    ]);
+    const groupsById = new Map(groups.map(group => [group.id, group]));
+
     for (const tab of tabs) {
-      if (!tab.url || (tabGroupId !== null && tab.groupId !== tabGroupId)) continue;
+      if (!tab.url || tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) continue;
+      if (tabGroupId !== null && tab.groupId !== tabGroupId) continue;
+
       const group = groupsById.get(tab.groupId);
-      const groupName = group ? group.title || 'Unnamed tab group' : 'Ungrouped';
-      bookmarks.push({id: `tab:${tab.id}`, title: tab.title || 'Untitled tab', url: tab.url, folder: `Open tabs / ${groupName} / Window ${tab.windowId}`, source: 'tab', tabGroupId: tab.groupId});
+      if (!group) continue;
+
+      items.push({
+        id: `tab:${tab.id}`,
+        title: tab.title || 'Untitled tab',
+        url: tab.url,
+        folder: `Tab groups / ${group.title || 'Unnamed tab group'} / Window ${tab.windowId}`,
+        source: 'tab',
+        tabGroupId: group.id,
+        tabGroupName: group.title || 'Unnamed tab group',
+        addedToScanAt: tab.lastAccessed || scanStartedAt
+      });
+    }
+  }
+
+  if (includeOpenTabs) {
+    const tabs = await chrome.tabs.query({groupId: chrome.tabGroups.TAB_GROUP_ID_NONE});
+    for (const tab of tabs) {
+      if (!tab.url) continue;
+      items.push({
+        id: `tab:${tab.id}`,
+        title: tab.title || 'Untitled tab',
+        url: tab.url,
+        folder: `Open tabs / Ungrouped / Window ${tab.windowId}`,
+        source: 'tab',
+        tabGroupId: chrome.tabGroups.TAB_GROUP_ID_NONE,
+        addedToScanAt: tab.lastAccessed || scanStartedAt
+      });
     }
   }
 
@@ -112,12 +228,36 @@ async function scan({folderId = null, folderName = 'All groups', includeOpenTabs
     if (!byUrl.has(key)) byUrl.set(key, []);
     byUrl.get(key).push(bookmark);
   }
-  const duplicateGroups = [...byUrl.entries()].filter(([, items]) => items.length > 1).map(([url, items]) => ({url, keep: items[0], remove: items.slice(1)}));
-  const papers = bookmarks.map(item => ({...item, info: paperInfo(item.url)})).filter(item => item.info);
-  const paperIds = new Set(papers.map(item => item.id));
-  const technicalPages = bookmarks.filter(item => !paperIds.has(item.id)).map(item => ({...item, info: technicalPageInfo(item.url)})).filter(item => item.info);
-  const downloadable = papers.filter(item => item.info.pdfUrl);
-  return save({status: 'ready', message: `${folderId ? folderName + ": " : ""}Found ${papers.length} papers, ${technicalPages.length} technical pages, ${downloadable.length} downloadable PDFs, and ${duplicateGroups.reduce((n, g) => n + g.remove.length, 0)} duplicate bookmarks.`, scanned: bookmarks.length, includeOpenTabs, tabGroupId, papers, technicalPages, duplicateGroups, removed: 0, downloaded: 0, failed: []});
+
+  const duplicateGroups = [...byUrl.entries()]
+    .filter(([, matches]) => matches.length > 1)
+    .map(([url, matches]) => ({url, keep: matches[0], remove: matches.slice(1)}));
+
+  const linkReport = items.map(classifyItem);
+  const papers = linkReport.filter(item => item.classification === 'Paper');
+  const technicalPages = linkReport.filter(item => item.classification === 'Technical');
+  const otherPages = linkReport.filter(item => item.classification === 'Other');
+  const filteredPages = linkReport.filter(item => item.classification === 'Filtered');
+  const scope = includeBookmarks && folderId ? `${folderName}: ` : '';
+
+  return save({
+    status: 'ready',
+    message: `${scope}Classified ${items.length} links: ${papers.length} papers, ${technicalPages.length} technical, ${otherPages.length} other, and ${filteredPages.length} filtered.`,
+    scanned: items.length,
+    includeBookmarks,
+    includeTabGroups,
+    includeOpenTabs,
+    tabGroupId,
+    papers,
+    technicalPages,
+    otherPages,
+    filteredPages,
+    linkReport,
+    duplicateGroups,
+    removed: 0,
+    downloaded: 0,
+    failed: []
+  });
 }
 
 async function removeDuplicates() {
@@ -153,10 +293,45 @@ async function downloadPdfs() {
   return {downloaded, failed};
 }
 
-chrome.runtime.onInstalled.addListener(() => save({status: 'idle', message: 'Ready to scan your bookmarks.'}));
+function uniqueUrlRecords(state) {
+  const records = [];
+  const seen = new Set();
+  for (const item of state.linkReport || [...(state.papers || []), ...(state.technicalPages || [])]) {
+    const key = cleanUrl(item.url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    records.push({
+      url: item.url,
+      classification: item.classification || (item.info ? 'Detected' : 'Filtered'),
+      type: item.info?.kind || null,
+      reason: item.reason || null,
+      location: item.folder,
+      title: item.title,
+      source: item.source || 'bookmark',
+      addedAt: item.dateAdded || item.addedToScanAt ? new Date(item.dateAdded || item.addedToScanAt).toISOString() : null
+    });
+  }
+  return records;
+}
+
+async function exportUniqueUrls() {
+  const state = (await chrome.storage.local.get(STATE_KEY))[STATE_KEY];
+  if (!state?.linkReport && !state?.papers && !state?.technicalPages) throw new Error('Scan pages first.');
+  const records = uniqueUrlRecords(state);
+  const payload = JSON.stringify({generatedAt: new Date().toISOString(), count: records.length, urls: records}, null, 2);
+  const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(payload)}`;
+  const fileName = 'Bookmark Papers/classification-report.json';
+  await chrome.downloads.download({url: dataUrl, filename: fileName, conflictAction: 'uniquify', saveAs: false});
+  await save({status: 'ready', message: `Exported classification decisions for ${records.length} unique URL${records.length === 1 ? '' : 's'}.`, failed: []});
+  return {count: records.length, fileName};
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  save({status: 'idle', message: 'Ready to scan your pages.'});
+});
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
-  const actions = {scan, removeDuplicates, downloadPdfs};
+  const actions = {scan, removeDuplicates, downloadPdfs, exportUniqueUrls, getTabGroups};
   if (!actions[message.action]) return;
   actions[message.action](message).then(result => respond({ok: true, result})).catch(error => respond({ok: false, error: error.message}));
   return true;

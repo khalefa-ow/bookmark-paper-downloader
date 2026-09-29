@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Bookmark Paper Sweeper",
-  "version": "1.4.0",
-  "description": "Find papers and PDFs in every bookmark folder, remove duplicates, and download PDFs.",
+  "version": "1.8.0",
+  "description": "Classify bookmarks, current tab groups, and open tabs; remove duplicates and download papers.",
   "permissions": ["bookmarks", "downloads", "storage", "tabs", "tabGroups"],
   "background": {
     "service_worker": "background.js"
