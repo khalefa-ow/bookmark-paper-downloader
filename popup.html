@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bookmark Paper Sweeper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><span class="mark">PS</span><div><h1>Paper Sweeper</h1><p>Bookmarks → organized PDFs</p></div></header>
+  <main>
+    <label class="group-filter" for="group"><span>Bookmark group</span><select id="group"><option value="">All groups</option></select></label>
+    <label class="tab-option"><input id="includeTabs" type="checkbox"> Include open tabs</label>
+    <label class="group-filter tab-group-filter" for="tabGroup"><span>Tab group</span><select id="tabGroup" disabled><option value="">All open tabs</option><option value="-1">Ungrouped tabs</option></select></label>
+    <button id="scan" class="primary">Scan selected group</button>
+    <p id="status" role="status" aria-live="polite">Ready to scan your bookmarks.</p>
+    <section id="summary" hidden>
+      <div class="stats"><div><strong id="paperCount">0</strong><span>Papers</span></div><div><strong id="technicalCount">0</strong><span>Tech pages</span></div><div><strong id="pdfCount">0</strong><span>PDFs</span></div><div><strong id="duplicateCount">0</strong><span>Duplicates</span></div></div>
+      <div class="actions"><button id="download">Download all PDFs</button><button id="remove" class="danger">Remove duplicates</button></div>
+      <details><summary>Detected papers <span id="detectedBadge"></span></summary><ul id="papers"></ul></details>
+      <details id="technicalDetails"><summary>Technical pages <span id="technicalBadge"></span></summary><ul id="technicalPages"></ul></details>
+      <details id="duplicateDetails"><summary>Duplicate bookmarks <span id="duplicateBadge"></span></summary><ul id="duplicates"></ul></details>
+      <div id="errors" hidden></div>
+    </section>
+  </main>
+  <footer>Downloads go to <b>Downloads/Bookmark Papers</b>. Some publisher pages cannot be downloaded automatically.</footer>
+  <script src="popup.js"></script>
+</body>
+</html>

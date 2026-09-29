@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Bookmark Paper Sweeper",
+  "version": "1.4.0",
+  "description": "Find papers and PDFs in every bookmark folder, remove duplicates, and download PDFs.",
+  "permissions": ["bookmarks", "downloads", "storage", "tabs", "tabGroups"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Bookmark Paper Sweeper",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}
