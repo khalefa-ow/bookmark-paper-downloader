@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tab dashboard · Paper Sweeper</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="dashboard.html" aria-label="Paper Sweeper dashboard">
+      <span class="mark">PS</span>
+      <span><strong>Paper Sweeper</strong><small>Tab dashboard</small></span>
+    </a>
+    <div class="header-actions">
+      <button id="refresh">Refresh</button>
+      <button id="describe">Generate descriptions</button>
+      <button id="organize" class="primary">Organize into one window</button>
+      <button id="closeAll" class="danger">Close all collected tabs</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">All open windows</p>
+        <h1>Your reading workspace, collected.</h1>
+        <p id="status" role="status" aria-live="polite">Collecting open tabs…</p>
+      </div>
+      <div class="stats" aria-label="Tab summary">
+        <div><strong id="tabCount">0</strong><span>Tabs</span></div>
+        <div><strong id="groupCount">0</strong><span>Groups</span></div>
+        <div><strong id="downloadedCount">0</strong><span>Downloaded</span></div>
+        <div><strong id="pendingCount">0</strong><span>Not downloaded</span></div>
+      </div>
+    </section>
+
+    <section class="toolbar" aria-label="Filters">
+      <input id="search" type="search" placeholder="Search titles, groups, or domains…" aria-label="Search collected tabs">
+      <select id="downloadFilter" aria-label="Filter by download status">
+        <option value="all">All download states</option>
+        <option value="downloaded">Downloaded</option>
+        <option value="not-downloaded">Not downloaded</option>
+      </select>
+      <select id="typeFilter" aria-label="Filter by type">
+        <option value="all">All link types</option>
+        <option value="Paper">Papers</option>
+        <option value="Technical">Technical</option>
+        <option value="Other">Other</option>
+      </select>
+    </section>
+
+    <section id="groups" class="groups" aria-live="polite"></section>
+    <section id="empty" class="empty" hidden>
+      <h2>No matching tabs</h2>
+      <p>Try changing the filters or open a web page in another tab.</p>
+    </section>
+  </main>
+
+  <template id="groupTemplate">
+    <section class="group-card">
+      <button class="group-heading" type="button" aria-expanded="true">
+        <span class="color-dot"></span>
+        <span class="group-title"></span>
+        <span class="group-meta"></span>
+        <span class="chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="tab-grid"></div>
+    </section>
+  </template>
+  <template id="tabTemplate">
+    <article class="tab-card">
+      <div class="card-top">
+        <img class="favicon" alt="" width="20" height="20">
+        <span class="type-chip"></span>
+        <span class="download-chip"></span>
+        <button class="close-one" title="Close tab" aria-label="Close tab">×</button>
+      </div>
+      <a class="tab-title" target="_blank"></a>
+      <p class="domain"></p>
+      <p class="description"></p>
+    </article>
+  </template>
+  <script src="dashboard.js"></script>
+</body>
+</html>

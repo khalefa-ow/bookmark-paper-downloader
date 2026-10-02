@@ -83,6 +83,110 @@ async function getTabGroups() {
   })));
   return withCounts.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 }
+
+function tabGroupKey(tab, group) {
+  return group ? `group:${tab.windowId}:${group.id}` : `ungrouped:${tab.windowId}`;
+}
+
+async function getDashboardTabs() {
+  const [tabs, groups, stored, downloads] = await Promise.all([
+    chrome.tabs.query({}),
+    chrome.tabGroups.query({}),
+    chrome.storage.local.get(STATE_KEY),
+    chrome.downloads.search({limit: 1000, orderBy: ['-startTime']})
+  ]);
+  const extensionOrigin = chrome.runtime.getURL('');
+  const groupsById = new Map(groups.map(group => [`${group.windowId}:${group.id}`, group]));
+  const downloadedUrls = new Set(stored[STATE_KEY]?.downloadedUrls || []);
+  for (const download of downloads) {
+    for (const candidate of [download.url, download.finalUrl]) {
+      if (candidate) downloadedUrls.add(cleanUrl(candidate));
+    }
+  }
+
+  const records = tabs
+    .filter(tab => tab.id && tab.url && !tab.url.startsWith(extensionOrigin) && /^https?:/i.test(tab.url))
+    .map(tab => {
+      const group = tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE
+        ? null
+        : groupsById.get(`${tab.windowId}:${tab.groupId}`) || null;
+      const classified = classifyItem({
+        id: `tab:${tab.id}`,
+        tabId: tab.id,
+        windowId: tab.windowId,
+        title: tab.title || 'Untitled tab',
+        url: tab.url,
+        source: 'tab',
+        pinned: Boolean(tab.pinned),
+        active: Boolean(tab.active),
+        addedToScanAt: tab.lastAccessed
+      });
+      const downloadUrl = classified.info?.pdfUrl;
+      return {
+        ...classified,
+        groupKey: tabGroupKey(tab, group),
+        group: group ? {
+          id: group.id,
+          title: group.title || 'Unnamed group',
+          color: group.color,
+          collapsed: group.collapsed,
+          windowId: group.windowId
+        } : {
+          id: null,
+          title: `Ungrouped · Window ${tab.windowId}`,
+          color: 'grey',
+          collapsed: false,
+          windowId: tab.windowId
+        },
+        downloadStatus: downloadUrl && downloadedUrls.has(cleanUrl(downloadUrl)) ? 'downloaded' : 'not-downloaded'
+      };
+    });
+
+  records.sort((a, b) =>
+    a.group.title.localeCompare(b.group.title) ||
+    a.windowId - b.windowId ||
+    a.title.localeCompare(b.title)
+  );
+  return records;
+}
+
+async function organizeTabs({tabIds = []} = {}) {
+  const records = (await getDashboardTabs()).filter(item => tabIds.length === 0 || tabIds.includes(item.tabId));
+  if (!records.length) throw new Error('There are no open web tabs to organize.');
+
+  const created = await chrome.windows.create({url: chrome.runtime.getURL('dashboard.html'), focused: true});
+  const validIds = new Set((await chrome.tabs.query({})).map(tab => tab.id));
+  const movable = records.filter(item => validIds.has(item.tabId));
+  if (!movable.length) throw new Error('The selected tabs are no longer open.');
+  const pinned = movable.filter(item => item.pinned);
+  const unpinned = movable.filter(item => !item.pinned);
+  if (pinned.length) await chrome.tabs.move(pinned.map(item => item.tabId), {windowId: created.id, index: 0});
+  if (unpinned.length) await chrome.tabs.move(unpinned.map(item => item.tabId), {windowId: created.id, index: -1});
+
+  const grouped = new Map();
+  for (const item of unpinned) {
+    if (!grouped.has(item.groupKey)) grouped.set(item.groupKey, []);
+    grouped.get(item.groupKey).push(item);
+  }
+  for (const items of grouped.values()) {
+    const groupId = await chrome.tabs.group({tabIds: items.map(item => item.tabId), createProperties: {windowId: created.id}});
+    const source = items[0].group;
+    await chrome.tabGroups.update(groupId, {
+      title: source.title,
+      color: source.color || 'grey',
+      collapsed: Boolean(source.collapsed)
+    });
+  }
+  return {windowId: created.id, organized: movable.length, pinned: pinned.length};
+}
+
+async function closeDashboardTabs({tabIds = []} = {}) {
+  if (!tabIds.length) throw new Error('No tabs were selected to close.');
+  const openIds = new Set((await chrome.tabs.query({})).map(tab => tab.id));
+  const ids = [...new Set(tabIds)].filter(id => Number.isInteger(id) && openIds.has(id));
+  if (ids.length) await chrome.tabs.remove(ids);
+  return {closed: ids.length};
+}
 function paperReason(info) {
   const reasons = {
     direct: 'Direct PDF URL',
@@ -281,12 +385,14 @@ async function downloadPdfs() {
   for (const item of state.papers) if (item.info.pdfUrl) unique.set(cleanUrl(item.info.pdfUrl), item);
   let downloaded = 0;
   const failed = [];
+  const downloadedUrls = new Set(state.downloadedUrls || []);
   await save({status: 'downloading', message: `Starting ${unique.size} PDF downloads…`, downloaded: 0, failed: []});
   for (const item of unique.values()) {
     try {
       await chrome.downloads.download({url: item.info.pdfUrl, filename: safeFilename(item), conflictAction: 'uniquify', saveAs: false});
       downloaded++;
-      await save({downloaded, message: `Started ${downloaded} of ${unique.size} downloads…`});
+      downloadedUrls.add(cleanUrl(item.info.pdfUrl));
+      await save({downloaded, downloadedUrls: [...downloadedUrls], message: `Started ${downloaded} of ${unique.size} downloads…`});
     } catch (error) { failed.push(`${item.title}: ${error.message}`); }
   }
   await save({status: 'ready', downloaded, failed, message: `Started ${downloaded} unique PDF download${downloaded === 1 ? '' : 's'}${failed.length ? `; ${failed.length} failed` : ''}.`});
@@ -331,7 +437,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
-  const actions = {scan, removeDuplicates, downloadPdfs, exportUniqueUrls, getTabGroups};
+  const actions = {scan, removeDuplicates, downloadPdfs, exportUniqueUrls, getTabGroups, getDashboardTabs, organizeTabs, closeDashboardTabs};
   if (!actions[message.action]) return;
   actions[message.action](message).then(result => respond({ok: true, result})).catch(error => respond({ok: false, error: error.message}));
   return true;

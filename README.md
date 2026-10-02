@@ -1,6 +1,6 @@
 # Bookmark Paper Sweeper
 
-A local Chrome extension that scans every bookmark folder, identifies papers, PDFs, and technical pages, reviews/removes duplicate bookmarks, and downloads unique PDFs. Every detected item shows the bookmark folder where it is listed.
+A local Chrome extension that collects tabs from every open window into a dashboard, preserves tab-group context, identifies papers, PDFs, and technical pages, reviews/removes duplicate bookmarks, and downloads unique PDFs.
 
 ## Install
 
@@ -9,6 +9,14 @@ A local Chrome extension that scans every bookmark folder, identifies papers, PD
 3. Click **Load unpacked**.
 4. Select this `bookmark-paper-downloader` folder.
 5. Open the extension and choose any combination of **Bookmarks**, **Tab groups**, and ungrouped **Open tabs**, then click **Scan selected pages**.
+
+## Tab dashboard
+
+Click **Open tab dashboard** in the extension popup to see HTTP(S) tabs from every normal Chrome window. Tabs are ordered by their existing group name and source window. The dashboard can search and filter the collection, show downloaded versus not-downloaded items, close individual tabs, or—after confirmation—close the full collection.
+
+**Organize into one window** moves the collected tabs to a new Chrome window and recreates their original groups. Ungrouped tabs are placed in a group named for their source window, so their provenance is not lost. Pinned tabs remain pinned and are not placed in a Chrome tab group.
+
+Each card has a short local description. **Generate descriptions** uses Chrome's on-device Language Model API when the browser supports it; bookmark and tab data is not sent to a remote model. If the API is unavailable, the dashboard keeps its local descriptions.
 
 Chrome saves files under `Downloads/Bookmark Papers`. The extension asks for confirmation before deleting duplicate bookmarks and always keeps the first copy encountered.
 

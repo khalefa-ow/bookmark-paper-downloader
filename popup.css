@@ -50,6 +50,18 @@ main {
   padding: 16px;
 }
 
+.dashboard-link {
+  width: 100%;
+  margin-bottom: 12px;
+  color: #173f35;
+  background: #e7f2ed;
+  border-color: #b9d5ca;
+}
+
+.dashboard-link span {
+  float: right;
+}
+
 .source-options {
   display: flex;
   flex-wrap: wrap;

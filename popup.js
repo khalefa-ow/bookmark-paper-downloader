@@ -127,6 +127,7 @@ async function loadTabGroups() {
 
 $('includeBookmarks').addEventListener('change', () => syncSourceControls());
 $('includeTabGroups').addEventListener('change', () => syncSourceControls());
+$('openDashboard').addEventListener('click', () => chrome.tabs.create({url: chrome.runtime.getURL('dashboard.html')}));
 
 $('scan').addEventListener('click', () => {
   const includeBookmarks = $('includeBookmarks').checked;

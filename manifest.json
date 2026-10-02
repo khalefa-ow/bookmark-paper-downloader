@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Bookmark Paper Sweeper",
-  "version": "1.8.0",
-  "description": "Classify bookmarks, current tab groups, and open tabs; remove duplicates and download papers.",
-  "permissions": ["bookmarks", "downloads", "storage", "tabs", "tabGroups"],
+  "version": "2.0.0",
+  "description": "Collect and organize open tabs, classify bookmarks and papers, remove duplicates, and download PDFs.",
+  "permissions": ["bookmarks", "downloads", "favicon", "storage", "tabs", "tabGroups"],
   "background": {
     "service_worker": "background.js"
   },
