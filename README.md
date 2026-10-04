@@ -12,7 +12,13 @@ A local Chrome extension that collects tabs from every open window into a dashbo
 
 ## Tab dashboard
 
-Click **Open tab dashboard** in the extension popup to see HTTP(S) tabs from every normal Chrome window. Tabs are ordered by their existing group name and source window. The dashboard can search and filter the collection, show downloaded versus not-downloaded items, close individual tabs, or—after confirmation—close the full collection.
+Click **Organize tabs** in the extension popup to see HTTP(S) tabs from every normal Chrome window. Tabs are ordered by their existing group name and source window. The dashboard can search and filter the collection, show downloaded versus not-downloaded items, close individual tabs, or—after confirmation—close the full collection.
+
+Select cards in the dashboard to regroup their real Chrome tabs. Selected tabs can be added to an existing group, placed into a newly named and colored group, or removed from groups. New groups are created once per source window; applying an existing group moves tabs from other windows into that group's window. Chrome requires pinned tabs to be unpinned before grouping.
+
+Use **Select group** to select every tab in an existing group, then choose **Group by category** to sort the selection into **Papers**, **Technical**, and **Other** tab groups. Tabs may be selected across multiple groups or from ungrouped sections; categories are created separately in each source window.
+
+Use **Remove all groups** to ungroup every tab across all open windows without closing or moving tabs. You can then select the collected tabs and build a new group structure.
 
 **Organize into one window** moves the collected tabs to a new Chrome window and recreates their original groups. Ungrouped tabs are placed in a group named for their source window, so their provenance is not lost. Pinned tabs remain pinned and are not placed in a Chrome tab group.
 

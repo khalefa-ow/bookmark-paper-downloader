@@ -57,6 +57,10 @@ h1 { margin: 0; color: #173f35; font: 700 clamp(28px, 4vw, 48px)/1.1 Georgia, se
 
 .toolbar { display: grid; grid-template-columns: minmax(260px, 1fr) auto auto; gap: 10px; margin-bottom: 20px; padding: 12px; background: #ecebe3; border-radius: 12px; }
 .toolbar input { width: 100%; }
+.regroup-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -10px 0 20px; padding: 12px; background: #e4eee9; border: 1px solid #cbded5; border-radius: 12px; }
+.selection-actions { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.selection-actions strong { color: #245d4d; white-space: nowrap; }
+.regroup-toolbar input { min-width: 180px; }
 .groups { display: grid; gap: 15px; }
 .group-card { overflow: hidden; background: white; border: 1px solid #dfded4; border-radius: 14px; box-shadow: 0 4px 16px #26352f0a; }
 .group-heading { display: grid; width: 100%; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; padding: 14px 18px; text-align: left; background: #fbfaf6; border: 0; border-radius: 0; }
@@ -65,11 +69,16 @@ h1 { margin: 0; color: #173f35; font: 700 clamp(28px, 4vw, 48px)/1.1 Georgia, se
 .group-meta { color: #7a817c; font-size: 12px; }
 .chevron { transition: transform .15s; }
 .group-heading[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
-.group-heading[aria-expanded="false"] + .tab-grid { display: none; }
+.group-heading[aria-expanded="false"] ~ .group-actions,
+.group-heading[aria-expanded="false"] ~ .tab-grid { display: none; }
+.group-actions { display: flex; justify-content: flex-end; padding: 7px 12px; background: #f7f6f1; border-top: 1px solid #ecebe3; }
+.group-actions button { padding: 5px 9px; font-size: 12px; }
 .tab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1px; background: #e9e8df; }
 .tab-card { min-width: 0; padding: 15px 17px 17px; background: white; }
 .card-top { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.tab-select { width: 17px; height: 17px; margin: 0 2px 0 0; accent-color: #2b8068; }
 .favicon { margin-right: auto; object-fit: contain; }
+.tab-card:has(.tab-select:checked) { position: relative; z-index: 1; box-shadow: inset 0 0 0 2px #2b8068; }
 .type-chip, .download-chip { padding: 2px 7px; font-size: 10px; font-weight: 700; border-radius: 12px; }
 .type-chip { color: #315d78; background: #e8f1f6; }
 .download-chip.downloaded { color: #23624f; background: #e2f2eb; }
@@ -88,4 +97,5 @@ h1 { margin: 0; color: #173f35; font: 700 clamp(28px, 4vw, 48px)/1.1 Georgia, se
   .stats { min-width: 0; }
   .toolbar { grid-template-columns: 1fr 1fr; }
   .toolbar input { grid-column: 1 / -1; }
+  .regroup-toolbar > select, .regroup-toolbar > input, #applyGroup { flex: 1 1 220px; }
 }

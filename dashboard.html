@@ -50,6 +50,28 @@
       </select>
     </section>
 
+    <section class="regroup-toolbar" aria-label="Regroup selected tabs">
+      <div class="selection-actions">
+        <strong><span id="selectedCount">0</span> selected</strong>
+        <button id="selectVisible" type="button">Select visible</button>
+        <button id="clearSelection" type="button">Clear</button>
+        <button id="ungroupAll" type="button" class="danger">Remove all groups</button>
+      </div>
+      <select id="groupTarget" aria-label="Choose a destination tab group">
+        <option value="">Choose group action…</option>
+        <option value="new">Create a new group</option>
+        <option value="ungroup">Remove from tab groups</option>
+      </select>
+      <input id="newGroupName" type="text" maxlength="80" placeholder="New group name" aria-label="New group name" hidden>
+      <select id="newGroupColor" aria-label="New group color" hidden>
+        <option value="grey">Grey</option><option value="blue">Blue</option><option value="red">Red</option>
+        <option value="yellow">Yellow</option><option value="green">Green</option><option value="pink">Pink</option>
+        <option value="purple">Purple</option><option value="cyan">Cyan</option><option value="orange">Orange</option>
+      </select>
+      <button id="applyGroup" type="button" class="primary" disabled>Apply to tab groups</button>
+      <button id="categorize" type="button" class="primary" disabled>Group by category</button>
+    </section>
+
     <section id="groups" class="groups" aria-live="polite"></section>
     <section id="empty" class="empty" hidden>
       <h2>No matching tabs</h2>
@@ -65,12 +87,16 @@
         <span class="group-meta"></span>
         <span class="chevron" aria-hidden="true">⌄</span>
       </button>
+      <div class="group-actions">
+        <button class="select-group" type="button">Select group</button>
+      </div>
       <div class="tab-grid"></div>
     </section>
   </template>
   <template id="tabTemplate">
     <article class="tab-card">
       <div class="card-top">
+        <input class="tab-select" type="checkbox" aria-label="Select tab for regrouping">
         <img class="favicon" alt="" width="20" height="20">
         <span class="type-chip"></span>
         <span class="download-chip"></span>

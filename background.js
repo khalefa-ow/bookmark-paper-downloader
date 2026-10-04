@@ -187,6 +187,103 @@ async function closeDashboardTabs({tabIds = []} = {}) {
   if (ids.length) await chrome.tabs.remove(ids);
   return {closed: ids.length};
 }
+
+async function regroupTabs({tabIds = [], target = '', name = '', color = 'grey'} = {}) {
+  const requested = [...new Set(tabIds)].filter(Number.isInteger);
+  if (!requested.length) throw new Error('Select at least one tab to regroup.');
+
+  const openTabs = await chrome.tabs.query({});
+  const byId = new Map(openTabs.map(tab => [tab.id, tab]));
+  const selected = requested.map(id => byId.get(id)).filter(Boolean);
+  if (!selected.length) throw new Error('The selected tabs are no longer open.');
+  const ids = selected.map(tab => tab.id);
+
+  if (target === 'ungroup') {
+    const groupedIds = selected
+      .filter(tab => tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE)
+      .map(tab => tab.id);
+    if (groupedIds.length) await chrome.tabs.ungroup(groupedIds);
+    return {updated: ids.length, groupsCreated: 0};
+  }
+
+  if (selected.some(tab => tab.pinned)) throw new Error('Pinned tabs cannot be added to tab groups. Unpin them first.');
+
+  if (target === 'new') {
+    const title = name.trim();
+    if (!title) throw new Error('Enter a name for the new group.');
+    const validColors = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
+    const groupColor = validColors.has(color) ? color : 'grey';
+    const byWindow = new Map();
+    for (const tab of selected) {
+      if (!byWindow.has(tab.windowId)) byWindow.set(tab.windowId, []);
+      byWindow.get(tab.windowId).push(tab.id);
+    }
+    for (const [windowId, windowTabIds] of byWindow) {
+      const groupId = await chrome.tabs.group({tabIds: windowTabIds, createProperties: {windowId}});
+      await chrome.tabGroups.update(groupId, {title, color: groupColor});
+    }
+    return {updated: ids.length, groupsCreated: byWindow.size};
+  }
+
+  const match = /^group:(-?\d+)$/.exec(target);
+  if (!match) throw new Error('Choose a destination group.');
+  const groupId = Number(match[1]);
+  const group = (await chrome.tabGroups.query({})).find(candidate => candidate.id === groupId);
+  if (!group) throw new Error('The destination group no longer exists.');
+
+  const needsMove = selected.filter(tab => tab.windowId !== group.windowId).map(tab => tab.id);
+  if (needsMove.length) await chrome.tabs.move(needsMove, {windowId: group.windowId, index: -1});
+  await chrome.tabs.group({tabIds: ids, groupId});
+  return {updated: ids.length, groupsCreated: 0, moved: needsMove.length};
+}
+
+async function ungroupAllTabs() {
+  const tabs = await chrome.tabs.query({});
+  const byWindow = new Map();
+  for (const tab of tabs) {
+    if (!tab.id || tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) continue;
+    if (!byWindow.has(tab.windowId)) byWindow.set(tab.windowId, []);
+    byWindow.get(tab.windowId).push(tab.id);
+  }
+  let updated = 0;
+  for (const tabIds of byWindow.values()) {
+    await chrome.tabs.ungroup(tabIds);
+    updated += tabIds.length;
+  }
+  return {updated};
+}
+
+async function categorizeTabs({tabIds = []} = {}) {
+  const requested = new Set(tabIds.filter(Number.isInteger));
+  if (!requested.size) throw new Error('Select at least one tab to categorize.');
+
+  const records = (await getDashboardTabs()).filter(item => requested.has(item.tabId));
+  if (!records.length) throw new Error('The selected tabs are no longer open.');
+  const movable = records.filter(item => !item.pinned);
+  if (!movable.length) throw new Error('Pinned tabs cannot be added to tab groups. Unpin them first.');
+
+  const categoryDetails = {
+    Paper: {title: 'Papers', color: 'blue'},
+    Technical: {title: 'Technical', color: 'green'},
+    Other: {title: 'Other', color: 'grey'}
+  };
+  const buckets = new Map();
+  for (const item of movable) {
+    const key = `${item.windowId}:${item.classification}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(item);
+  }
+
+  for (const items of buckets.values()) {
+    const category = categoryDetails[items[0].classification] || categoryDetails.Other;
+    const groupId = await chrome.tabs.group({
+      tabIds: items.map(item => item.tabId),
+      createProperties: {windowId: items[0].windowId}
+    });
+    await chrome.tabGroups.update(groupId, {title: category.title, color: category.color});
+  }
+  return {updated: movable.length, groupsCreated: buckets.size, skippedPinned: records.length - movable.length};
+}
 function paperReason(info) {
   const reasons = {
     direct: 'Direct PDF URL',
@@ -437,7 +534,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
-  const actions = {scan, removeDuplicates, downloadPdfs, exportUniqueUrls, getTabGroups, getDashboardTabs, organizeTabs, closeDashboardTabs};
+  const actions = {scan, removeDuplicates, downloadPdfs, exportUniqueUrls, getTabGroups, getDashboardTabs, organizeTabs, closeDashboardTabs, regroupTabs, ungroupAllTabs, categorizeTabs};
   if (!actions[message.action]) return;
   actions[message.action](message).then(result => respond({ok: true, result})).catch(error => respond({ok: false, error: error.message}));
   return true;
